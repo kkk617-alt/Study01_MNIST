@@ -15,3 +15,6 @@ venv/
 .idea/
 Thumbs.db
 desktop.ini
+
+# Superpowers SDD 작업 흔적 (원장, 브리프, 리뷰 패키지)
+.superpowers/
