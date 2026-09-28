@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>web_version 대조 검증</title>
+  <style>
+    body { font-family: Consolas, monospace; background: #111; color: #eee;
+           padding: 20px; }
+    pre { font-size: 15px; line-height: 1.7; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>PyTorch 대조 검증</h1>
+  <pre id="결과">불러오는 중...</pre>
+  <script type="module">
+    import { 가중치_불러오기, 순전파 } from "./js/model.js";
+
+    const 결과요소 = document.getElementById("결과");
+
+    function base64를_바이트로(문자열) {
+      const 원문 = atob(문자열);
+      const 바이트 = new Uint8Array(원문.length);
+      for (let i = 0; i < 원문.length; i += 1) 바이트[i] = 원문.charCodeAt(i);
+      return 바이트;
+    }
+
+    async function 검증() {
+      const 가중치묶음 = await 가중치_불러오기("./weights/");
+      const 응답 = await fetch("./weights/verify_samples.json");
+      if (!응답.ok) throw new Error(`verify_samples.json 적재 실패 (${응답.status})`);
+      const 묶음 = await 응답.json();
+
+      const 기대전처리 = base64를_바이트로(묶음["기대_전처리28x28_base64"]);
+      const 샘플수 = 묶음["샘플수"];
+
+      let 로짓최대오차 = 0;
+      let 예측일치 = 0;
+      let 정답수 = 0;
+      let 첫불일치 = -1;
+
+      for (let 번호 = 0; 번호 < 샘플수; 번호 += 1) {
+        const 입력 = 기대전처리.subarray(번호 * 784, (번호 + 1) * 784);
+        const 로짓 = 순전파(가중치묶음, 입력);
+        const 기대 = 묶음["기대_로짓"][번호];
+
+        let 예측 = 0;
+        let 기대예측 = 0;
+        for (let i = 1; i < 10; i += 1) {
+          if (로짓[i] > 로짓[예측]) 예측 = i;
+          if (기대[i] > 기대[기대예측]) 기대예측 = i;
+        }
+        for (let i = 0; i < 10; i += 1) {
+          로짓최대오차 = Math.max(로짓최대오차, Math.abs(로짓[i] - 기대[i]));
+        }
+
+        if (예측 === 기대예측) 예측일치 += 1;
+        else if (첫불일치 < 0) 첫불일치 = 번호;
+        if (예측 === 묶음["정답"][번호]) 정답수 += 1;
+      }
+
+      const 로짓통과 = 로짓최대오차 <= 1e-3;
+      const 예측통과 = 예측일치 === 샘플수;
+      const 통과 = 로짓통과 && 예측통과;
+
+      결과요소.textContent = [
+        `가중치 생성일시  ${가중치묶음.생성일시}`,
+        `샘플 ${샘플수} 장`,
+        ``,
+        `추론  로짓 최대 오차   ${로짓최대오차.toExponential(2)}   (허용 1e-3) ${로짓통과 ? "통과" : "실패"}`,
+        `예측  일치            ${예측일치}/${샘플수}   (허용 ${샘플수}/${샘플수}) ${예측통과 ? "통과" : "실패"}`,
+        `정답률                ${정답수}/${샘플수}   (참고용)`,
+        첫불일치 >= 0 ? `\n첫 불일치 샘플 번호: ${첫불일치}` : ``,
+        ``,
+        `판정: ${통과 ? "통과" : "실패"}`,
+      ].join("\n");
+      console.log(통과 ? "판정=통과" : "판정=실패");
+    }
+
+    검증().catch((오류) => {
+      결과요소.textContent = `오류: ${오류.message}\n\n판정: 실패`;
+      console.log("판정=실패");
+      console.error(오류);
+    });
+  </script>
+</body>
+</html>
