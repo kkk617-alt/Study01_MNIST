@@ -1,0 +1,105 @@
+/* 손글씨 인식기 데모 스타일.
+   데스크톱 tkinter 버전과 비슷한 배치를 유지하되, 좁은 화면에서는 세로로 쌓는다. */
+
+:root {
+  --바탕: #f4f5f7;
+  --판: #ffffff;
+  --글자: #1f2430;
+  --흐린글자: #5a6272;
+  --강조: #1565c0;
+  --테두리: #c8ccd4;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  padding: 24px 16px 48px;
+  background: var(--바탕);
+  color: var(--글자);
+  font-family: "Malgun Gothic", "맑은 고딕", system-ui, sans-serif;
+  line-height: 1.6;
+}
+
+main { max-width: 720px; margin: 0 auto; }
+
+h1 { font-size: 24px; margin: 0 0 8px; }
+h2 { font-size: 15px; font-weight: 600; margin: 0 0 10px; color: var(--흐린글자); }
+h3 { font-size: 13px; font-weight: 600; margin: 16px 0 6px; color: var(--흐린글자); }
+
+.설명 { margin: 0 0 20px; color: var(--흐린글자); font-size: 14px; }
+
+.작업판 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  align-items: flex-start;
+}
+
+.그리는쪽, .결과쪽 {
+  background: var(--판);
+  border: 1px solid var(--테두리);
+  border-radius: 10px;
+  padding: 16px;
+}
+
+.결과쪽 { flex: 1 1 240px; min-width: 240px; }
+
+#캔버스 {
+  display: block;
+  width: 280px;
+  height: 280px;
+  max-width: 100%;
+  background: #000;
+  border: 1px solid #888;
+  border-radius: 6px;
+  cursor: crosshair;
+  /* 그리는 동안 화면이 스크롤되지 않게 한다 (터치) */
+  touch-action: none;
+}
+
+#캔버스[disabled] { opacity: 0.5; cursor: progress; }
+
+.단추들 { display: flex; gap: 8px; margin-top: 12px; }
+
+.단추들 button {
+  flex: 1;
+  padding: 9px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--글자);
+  background: #eceef2;
+  border: 1px solid var(--테두리);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.단추들 button:hover:not(:disabled) { background: #e0e3ea; }
+.단추들 button:disabled { opacity: 0.5; cursor: default; }
+
+.결과숫자 {
+  font-family: Consolas, "D2Coding", monospace;
+  font-size: 96px;
+  font-weight: 700;
+  line-height: 1.1;
+  text-align: center;
+  color: var(--강조);
+  background: #fbfcfe;
+  border: 1px solid var(--테두리);
+  border-radius: 8px;
+  padding: 4px 0;
+}
+
+.확신도 { margin: 10px 0 0; text-align: center; font-size: 14px; color: var(--흐린글자); }
+
+.후보들 {
+  margin: 0;
+  font-family: Consolas, "D2Coding", monospace;
+  font-size: 13px;
+  line-height: 1.8;
+  white-space: pre;
+  overflow-x: auto;
+}
+
+.꼬리말 { margin-top: 28px; font-size: 13px; color: var(--흐린글자); }
+code { background: #e6e8ee; padding: 1px 5px; border-radius: 4px; }
