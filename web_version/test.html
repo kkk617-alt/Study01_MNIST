@@ -15,8 +15,10 @@
   <script type="module">
     import { 결과보고 } from "./js/test_runner.js";
     import { tensor_테스트_등록 } from "./js/tests/tensor_test.js";
+    import { preprocess_테스트_등록 } from "./js/tests/preprocess_test.js";
 
     tensor_테스트_등록();
+    preprocess_테스트_등록();
     결과보고(document.getElementById("결과"));
   </script>
 </body>
