@@ -1,0 +1,17 @@
+# MNIST 원본 데이터 (torchvision 이 최초 실행 시 자동으로 내려받음, 약 63MB)
+data/
+
+# 파이썬 캐시
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# 가상환경
+.venv/
+venv/
+
+# 편집기/OS 부산물
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini
