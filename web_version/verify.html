@@ -14,6 +14,7 @@
   <pre id="결과">불러오는 중...</pre>
   <script type="module">
     import { 가중치_불러오기, 순전파 } from "./js/model.js";
+    import { MNIST형식으로_변환, 란초스_크기변경, 그림만들기 } from "./js/preprocess.js";
 
     const 결과요소 = document.getElementById("결과");
 
@@ -24,19 +25,70 @@
       return 바이트;
     }
 
+    /**
+     * MNIST 28x28 을 흰 배경 280x280 으로 바꾼다.
+     * export_weights.py 의 캔버스처럼_만들기 와 같아야 한다.
+     * 10배 최근접 확대는 블록 복제라 두 언어가 반드시 같은 결과를 낸다.
+     */
+    function 캔버스처럼_만들기(원본28x28) {
+      const 화소 = new Uint8ClampedArray(280 * 280);
+      for (let y = 0; y < 280; y += 1) {
+        const 원본y = (y / 10) | 0;
+        for (let x = 0; x < 280; x += 1) {
+          화소[y * 280 + x] = 255 - 원본28x28[원본y * 28 + ((x / 10) | 0)];
+        }
+      }
+      return 그림만들기(280, 280, 화소);
+    }
+
     async function 검증() {
       const 가중치묶음 = await 가중치_불러오기("./weights/");
       const 응답 = await fetch("./weights/verify_samples.json");
       if (!응답.ok) throw new Error(`verify_samples.json 적재 실패 (${응답.status})`);
       const 묶음 = await 응답.json();
 
+      const 원본들 = base64를_바이트로(묶음["원본28x28_base64"]);
       const 기대전처리 = base64를_바이트로(묶음["기대_전처리28x28_base64"]);
       const 샘플수 = 묶음["샘플수"];
 
+      // --- 축소 단계만 따로 대조 (여기가 가장 틀리기 쉬운 자리다) ---
+      const 시험 = 묶음["축소_시험"];
+      const 시험입력 = base64를_바이트로(시험["입력_base64"]);
+      const 시험기대 = base64를_바이트로(시험["출력_base64"]);
+      const 시험결과 = 란초스_크기변경(
+        그림만들기(시험["입력크기"], 시험["입력크기"],
+                 new Uint8ClampedArray(시험입력)),
+        시험["출력크기"], 시험["출력크기"],
+      );
+      let 축소최대오차 = 0;
+      for (let i = 0; i < 시험기대.length; i += 1) {
+        축소최대오차 = Math.max(축소최대오차,
+          Math.abs(시험결과.화소[i] - 시험기대[i]));
+      }
+
+      // --- 전처리 전체 대조 ---
+      let 전처리최대오차 = 0;
+      let 전처리첫불일치 = -1;
+      for (let 번호 = 0; 번호 < 샘플수; 번호 += 1) {
+        const 원본 = 원본들.subarray(번호 * 784, (번호 + 1) * 784);
+        const 나온것 = MNIST형식으로_변환(캔버스처럼_만들기(원본));
+        const 기대 = 기대전처리.subarray(번호 * 784, (번호 + 1) * 784);
+
+        let 이번최대 = 0;
+        for (let i = 0; i < 784; i += 1) {
+          이번최대 = Math.max(이번최대, Math.abs(나온것.화소[i] - 기대[i]));
+        }
+        if (이번최대 > 1 && 전처리첫불일치 < 0) 전처리첫불일치 = 번호;
+        전처리최대오차 = Math.max(전처리최대오차, 이번최대);
+      }
+
+      // --- 추론 대조 ---
+      // 입력은 기대_전처리 를 쓴다. 전처리 오류가 추론 지표를 오염시키지
+      // 않게 하기 위해서다. 전처리는 바로 위에서 따로 재고 있다.
       let 로짓최대오차 = 0;
       let 예측일치 = 0;
       let 정답수 = 0;
-      let 첫불일치 = -1;
+      let 예측첫불일치 = -1;
 
       for (let 번호 = 0; 번호 < 샘플수; 번호 += 1) {
         const 입력 = 기대전처리.subarray(번호 * 784, (번호 + 1) * 784);
@@ -54,26 +106,66 @@
         }
 
         if (예측 === 기대예측) 예측일치 += 1;
-        else if (첫불일치 < 0) 첫불일치 = 번호;
+        else if (예측첫불일치 < 0) 예측첫불일치 = 번호;
         if (예측 === 묶음["정답"][번호]) 정답수 += 1;
       }
 
+      const 축소통과 = 축소최대오차 <= 1;
+      const 전처리통과 = 전처리최대오차 <= 1;
       const 로짓통과 = 로짓최대오차 <= 1e-3;
       const 예측통과 = 예측일치 === 샘플수;
-      const 통과 = 로짓통과 && 예측통과;
+      const 통과 = 축소통과 && 전처리통과 && 로짓통과 && 예측통과;
 
-      결과요소.textContent = [
+      const 줄들 = [
         `가중치 생성일시  ${가중치묶음.생성일시}`,
         `샘플 ${샘플수} 장`,
         ``,
-        `추론  로짓 최대 오차   ${로짓최대오차.toExponential(2)}   (허용 1e-3) ${로짓통과 ? "통과" : "실패"}`,
-        `예측  일치            ${예측일치}/${샘플수}   (허용 ${샘플수}/${샘플수}) ${예측통과 ? "통과" : "실패"}`,
-        `정답률                ${정답수}/${샘플수}   (참고용)`,
-        첫불일치 >= 0 ? `\n첫 불일치 샘플 번호: ${첫불일치}` : ``,
-        ``,
-        `판정: ${통과 ? "통과" : "실패"}`,
-      ].join("\n");
+        `축소    픽셀 최대 오차   ${축소최대오차}   (허용 1) ${축소통과 ? "통과" : "실패"}`,
+        `전처리  픽셀 최대 오차   ${전처리최대오차}   (허용 1) ${전처리통과 ? "통과" : "실패"}`,
+        `추론    로짓 최대 오차   ${로짓최대오차.toExponential(2)}   (허용 1e-3) ${로짓통과 ? "통과" : "실패"}`,
+        `예측    일치            ${예측일치}/${샘플수}   (허용 ${샘플수}/${샘플수}) ${예측통과 ? "통과" : "실패"}`,
+        `정답률                  ${정답수}/${샘플수}   (참고용)`,
+      ];
+      if (전처리첫불일치 >= 0) 줄들.push(``, `전처리 첫 불일치 샘플 번호: ${전처리첫불일치}`);
+      if (예측첫불일치 >= 0) 줄들.push(`예측 첫 불일치 샘플 번호: ${예측첫불일치}`);
+      줄들.push(``, `판정: ${통과 ? "통과" : "실패"}`);
+
+      결과요소.textContent = 줄들.join("\n");
       console.log(통과 ? "판정=통과" : "판정=실패");
+
+      if (전처리첫불일치 >= 0) 불일치_그리기(원본들, 기대전처리, 전처리첫불일치);
+    }
+
+    /** 허용치를 벗어난 첫 샘플의 기대/실제 28x28 을 10배로 키워 나란히 그린다. */
+    function 불일치_그리기(원본들, 기대전처리, 번호) {
+      const 원본 = 원본들.subarray(번호 * 784, (번호 + 1) * 784);
+      const 나온것 = MNIST형식으로_변환(캔버스처럼_만들기(원본));
+      const 기대 = 기대전처리.subarray(번호 * 784, (번호 + 1) * 784);
+
+      const 담을곳 = document.createElement("div");
+      담을곳.innerHTML = `<p>샘플 ${번호} — 왼쪽: 파이썬 기대값, 오른쪽: 자바스크립트 결과</p>`;
+      for (const [이름, 자료] of [["기대", 기대], ["실제", 나온것.화소]]) {
+        const 캔버스 = document.createElement("canvas");
+        캔버스.width = 280;
+        캔버스.height = 280;
+        캔버스.title = 이름;
+        캔버스.style.cssText = "image-rendering: pixelated; border: 1px solid #555; margin-right: 10px;";
+        const 그리기 = 캔버스.getContext("2d");
+        const 이미지 = 그리기.createImageData(28, 28);
+        for (let i = 0; i < 784; i += 1) {
+          이미지.data[i * 4] = 자료[i];
+          이미지.data[i * 4 + 1] = 자료[i];
+          이미지.data[i * 4 + 2] = 자료[i];
+          이미지.data[i * 4 + 3] = 255;
+        }
+        const 임시 = document.createElement("canvas");
+        임시.width = 28; 임시.height = 28;
+        임시.getContext("2d").putImageData(이미지, 0, 0);
+        그리기.imageSmoothingEnabled = false;
+        그리기.drawImage(임시, 0, 0, 280, 280);
+        담을곳.appendChild(캔버스);
+      }
+      document.body.appendChild(담을곳);
     }
 
     검증().catch((오류) => {
