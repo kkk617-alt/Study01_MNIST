@@ -1,0 +1,52 @@
+# GitHub Pages 배포 워크플로.
+#
+# Pages 설정의 Source 가 "GitHub Actions" 일 때 이 파일이 배포를 담당한다.
+# Source 를 GitHub Actions 로 바꿔 놓고 이 파일이 없으면 푸시해도 아무 일도
+# 일어나지 않는다. 둘은 항상 같이 있어야 한다.
+#
+# 저장소 규칙은 식별자와 주석을 한글로 쓰는 것이지만, 워크플로의 job id 와
+# step id 는 GitHub 이 ASCII 로 제한하므로 영어로 둔다. 파일명을 영어로 두는
+# 것과 같은 이유다. 사람이 읽는 name 은 한글로 쓴다.
+
+name: GitHub Pages 배포
+
+on:
+  push:
+    branches: [main]
+  # Actions 탭에서 손으로 다시 돌릴 수 있게 열어 둔다.
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 배포가 겹치면 뒤엣것만 남긴다. 단, 진행 중인 배포는 끊지 않는다.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: 정적 파일 배포
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: 저장소 내려받기
+        uses: actions/checkout@v7
+
+      - name: Pages 준비
+        uses: actions/configure-pages@v6
+
+      - name: 정적 파일 올리기
+        uses: actions/upload-pages-artifact@v5
+        with:
+          # 저장소 루트를 통째로 올린다. 루트의 index.html 이 /web_version/ 으로
+          # 보내고, README 에 적힌 .../web_version/ 주소도 그대로 살아 있게 된다.
+          path: .
+
+      - name: 배포
+        id: deployment
+        uses: actions/deploy-pages@v5

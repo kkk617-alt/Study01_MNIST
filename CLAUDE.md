@@ -50,9 +50,18 @@ desktop_version/mnist_cnn.pt
 ## 배포
 
 `web_version/` 은 정적 파일뿐이라 GitHub Pages 에 그대로 올라갑니다.
-설정은 `Deploy from a branch` → `main` → `/ (root)` 이고,
-주소는 `https://<사용자>.github.io/study01_MNIST/web_version/` 입니다.
-루트의 `.nojekyll` 이 Jekyll 처리를 끕니다.
+설정은 `GitHub Actions` 이고, 배포는 `.github/workflows/pages.yml` 이 맡습니다.
+`main` 에 푸시하면 저장소 루트를 통째로 올립니다.
+주소는 `https://<사용자>.github.io/study01_MNIST/web_version/` 이고,
+루트의 `index.html` 이 그리로 보내 줍니다.
+
+**Source 설정과 워크플로 파일은 항상 같이 갑니다.** Source 를 `GitHub Actions`
+로 둔 채 `.github/workflows/` 가 없으면 **푸시해도 배포가 돌지 않고 사이트가
+옛날 상태로 멈춥니다.** 에러도 안 납니다. 실제로 한 번 이 상태에 빠졌습니다.
+
+루트의 `.nojekyll` 은 지금 방식에서는 쓰이지 않습니다. 업로드한 파일을 그대로
+올리므로 Jekyll 이 애초에 돌지 않습니다. `Deploy from a branch` 로 되돌릴 때를
+위해 남겨 둡니다.
 
 ## 설계 문서
 
