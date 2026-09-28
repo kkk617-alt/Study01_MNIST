@@ -7,13 +7,18 @@
     python self_check.py
 """
 
+import base64
+import json
+import math
 import sys
 from pathlib import Path
 
 import torch
 import torch.nn.functional as F
 
-from export_weights import 배치정규화_접기, 접은_레이어들, 학습된_모델_읽기
+from export_weights import (
+    배치정규화_접기, 접은_레이어들, 학습된_모델_읽기, 시험무늬_만들기,
+)
 
 현재폴더 = Path(__file__).resolve().parent
 
@@ -71,9 +76,59 @@ def 검사_레이어_목록():
     단언(전체 == 421642, f"전체 원소 수 {전체} == 421642")
 
 
+def 검사_검증샘플():
+    """verify_samples.json 의 구조와 내용이 앞뒤가 맞아야 한다."""
+    print("검사: 검증 샘플")
+    경로 = 현재폴더.parent / "web_version" / "weights" / "verify_samples.json"
+    단언(경로.exists(), "verify_samples.json 이 존재")
+    if not 경로.exists():
+        return
+
+    묶음 = json.loads(경로.read_text(encoding="utf-8"))
+    샘플수 = 묶음["샘플수"]
+    단언(샘플수 == 200, f"샘플 수 {샘플수} == 200")
+
+    원본 = base64.b64decode(묶음["원본28x28_base64"])
+    전처리 = base64.b64decode(묶음["기대_전처리28x28_base64"])
+    단언(len(원본) == 샘플수 * 784, f"원본 바이트 {len(원본)} == {샘플수 * 784}")
+    단언(len(전처리) == 샘플수 * 784, f"전처리 바이트 {len(전처리)} == {샘플수 * 784}")
+
+    단언(len(묶음["기대_로짓"]) == 샘플수, "로짓 개수")
+    단언(all(len(줄) == 10 for 줄 in 묶음["기대_로짓"]), "로짓마다 10개")
+
+    # 로그 확률이므로 exp 의 합이 1 이어야 한다
+    최대편차 = 0.0
+    for 줄 in 묶음["기대_로짓"]:
+        합 = sum(math.exp(값) for 값 in 줄)
+        최대편차 = max(최대편차, abs(합 - 1.0))
+    단언(최대편차 < 1e-4, f"exp(로짓) 합의 최대 편차 {최대편차:.2e} < 1e-4")
+
+    # 내보낸 파이프라인이 실제로 쓸 만한지 (모델 성능 확인이지 이식 검증은 아니다)
+    맞은수 = sum(
+        1 for 줄, 정답 in zip(묶음["기대_로짓"], 묶음["정답"])
+        if max(range(10), key=lambda i: 줄[i]) == 정답
+    )
+    단언(맞은수 >= 190, f"기대 로짓 기준 정답 {맞은수}/200 >= 190")
+
+    시험 = 묶음["축소_시험"]
+    입력 = base64.b64decode(시험["입력_base64"])
+    출력 = base64.b64decode(시험["출력_base64"])
+    단언(len(입력) == 시험["입력크기"] ** 2, "축소 시험 입력 크기")
+    단언(len(출력) == 시험["출력크기"] ** 2, "축소 시험 출력 크기")
+
+    # 무늬가 난수에 의존하지 않아야 한다. 의존하면 다시 내보낼 때마다
+    # 자바스크립트 쪽 기대값이 바뀌어 대조가 무의미해진다.
+    다시만든무늬 = 시험무늬_만들기()
+    단언(
+        다시만든무늬.tobytes() == 입력,
+        "시험무늬_만들기() 가 매번 같은 무늬를 만든다",
+    )
+
+
 def main():
     검사_배치정규화_접기()
     검사_레이어_목록()
+    검사_검증샘플()
 
     print()
     if 실패목록:

@@ -10,17 +10,21 @@ BatchNorm 을 앞 합성곱에 접어 넣으므로, 자바스크립트 쪽에는
 만들어지는 파일 (../web_version/weights/):
     weights.bin          float32 리틀엔디언 원시 바이트
     shape.json           레이어 형상과 오프셋, 정규화 상수
-    verify_samples.json  검증용 샘플 (export_samples.py 에서 추가)
+    verify_samples.json  검증용 샘플 (MNIST 200 장의 기대 전처리·기대 로짓)
 """
 
+import base64
 import json
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import numpy as np
 import torch
+from PIL import Image, ImageOps
+from torchvision import datasets
 
 from model import 숫자인식CNN, 평균, 표준편차
+from preprocess import MNIST형식으로_변환, 텐서로_변환
 
 현재폴더 = Path(__file__).resolve().parent
 가중치파일 = 현재폴더 / "mnist_cnn.pt"
@@ -120,6 +124,97 @@ def 학습된_모델_읽기() -> 숫자인식CNN:
     return 모델
 
 
+샘플수 = 200
+데이터폴더 = 현재폴더 / "data"
+
+
+def 캔버스처럼_만들기(원본: Image.Image) -> Image.Image:
+    """MNIST 28x28 을 흰 배경 280x280 으로 바꿔 캔버스 입력을 흉내 낸다.
+
+    10배 확대에 최근접 이웃을 쓰는 것이 중요하다. 정수배 최근접은 10x10 블록
+    복제와 같아서 파이썬과 자바스크립트가 반드시 같은 결과를 낸다. 보간 방식의
+    차이가 검증에 끼어들 여지를 없앤다.
+    """
+
+    반전 = ImageOps.invert(원본.convert("L"))
+    return 반전.resize((280, 280), Image.NEAREST)
+
+
+def 시험무늬_만들기(크기: int = 37) -> Image.Image:
+    """축소 단계만 따로 대조하기 위한 고정 무늬를 만든다.
+
+    가로 그라데이션 + 대각선 + 격자를 섞어, 저주파와 고주파가 모두 들어가게 했다.
+    난수를 쓰지 않으므로 몇 번을 돌려도 같은 무늬가 나온다.
+    """
+
+    화소 = np.zeros((크기, 크기), dtype=np.uint8)
+    for y in range(크기):
+        for x in range(크기):
+            값 = (x * 255) // (크기 - 1)          # 가로 그라데이션
+            if abs(x - y) <= 1:
+                값 = 255                          # 대각선
+            elif (x // 3 + y // 3) % 2 == 0:
+                값 = max(0, 값 - 90)              # 격자
+            화소[y, x] = 값
+    return Image.fromarray(화소, mode="L")
+
+
+def 샘플_내보내기(모델: 숫자인식CNN):
+    """verify_samples.json 을 만든다."""
+
+    내보낼폴더.mkdir(parents=True, exist_ok=True)
+    테스트셋 = datasets.MNIST(root=str(데이터폴더), train=False, download=False)
+
+    원본모음 = bytearray()
+    전처리모음 = bytearray()
+    정답모음 = []
+    로짓모음 = []
+
+    for 번호 in range(샘플수):
+        원본, 정답 = 테스트셋[번호]
+        회색 = 원본.convert("L")
+        원본모음 += np.asarray(회색, dtype=np.uint8).tobytes()
+        정답모음.append(int(정답))
+
+        정리된 = MNIST형식으로_변환(캔버스처럼_만들기(회색))
+        전처리모음 += np.asarray(정리된, dtype=np.uint8).tobytes()
+
+        with torch.no_grad():
+            출력 = 모델(텐서로_변환(정리된))
+        로짓모음.append([float(값) for 값 in 출력[0]])
+
+    무늬 = 시험무늬_만들기()
+    줄인무늬 = 무늬.resize((20, 20), Image.LANCZOS)
+
+    묶음 = {
+        "설명": (
+            "MNIST 테스트셋 앞 200 장. 원본 28x28 을 반전 후 10배 최근접 확대해 "
+            "280x280 캔버스 입력을 흉내 낸 것이 전처리 입력이다. "
+            "기대_로짓은 forward() 의 반환값이므로 로그 확률이다."
+        ),
+        "생성일시": datetime.now(한국시간).strftime("%Y-%m-%d %H:%M (KST)"),
+        "샘플수": 샘플수,
+        "정답": 정답모음,
+        "원본28x28_base64": base64.b64encode(bytes(원본모음)).decode("ascii"),
+        "기대_전처리28x28_base64": base64.b64encode(bytes(전처리모음)).decode("ascii"),
+        "기대_로짓": 로짓모음,
+        "축소_시험": {
+            "설명": "PIL LANCZOS 축소만 따로 대조하기 위한 고정 무늬",
+            "입력크기": 무늬.size[0],
+            "출력크기": 20,
+            "입력_base64": base64.b64encode(
+                np.asarray(무늬, dtype=np.uint8).tobytes()).decode("ascii"),
+            "출력_base64": base64.b64encode(
+                np.asarray(줄인무늬, dtype=np.uint8).tobytes()).decode("ascii"),
+        },
+    }
+
+    (내보낼폴더 / "verify_samples.json").write_text(
+        json.dumps(묶음, ensure_ascii=False), encoding="utf-8"
+    )
+    return 샘플수
+
+
 def main():
     if not 가중치파일.exists():
         print(f"가중치 파일이 없습니다: {가중치파일}")
@@ -127,10 +222,13 @@ def main():
         raise SystemExit(1)
 
     모델 = 학습된_모델_읽기()
-    전체원소수 = 내보내기(모델)
 
+    전체원소수 = 내보내기(모델)
     print(f"weights.bin  {전체원소수:,} 개 원소, {전체원소수 * 4:,} 바이트")
-    print(f"shape.json   저장 위치: {내보낼폴더}")
+
+    개수 = 샘플_내보내기(모델)
+    print(f"verify_samples.json  샘플 {개수} 장")
+    print(f"저장 위치: {내보낼폴더}")
 
 
 if __name__ == "__main__":
