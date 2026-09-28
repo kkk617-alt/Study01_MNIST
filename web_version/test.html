@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <title>web_version 단위 테스트</title>
+  <style>
+    body { font-family: Consolas, monospace; background: #111; color: #eee;
+           padding: 20px; }
+    pre { font-size: 14px; line-height: 1.6; white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+  <h1>단위 테스트</h1>
+  <pre id="결과"></pre>
+  <script type="module">
+    import { 결과보고 } from "./js/test_runner.js";
+    import { tensor_테스트_등록 } from "./js/tests/tensor_test.js";
+
+    tensor_테스트_등록();
+    결과보고(document.getElementById("결과"));
+  </script>
+</body>
+</html>
